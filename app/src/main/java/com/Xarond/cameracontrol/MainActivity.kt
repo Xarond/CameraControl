@@ -12,7 +12,7 @@ import com.Xarond.cameracontrol.adapter.CameraAdapter
 import com.Xarond.cameracontrol.storage.CameraStorage
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -26,16 +26,17 @@ class MainActivity : AppCompatActivity() {
 
         cameras.addAll(CameraStorage.loadCameras(this))
 
-        adapter = CameraAdapter(cameras) { camera ->
+        adapter = CameraAdapter(cameras, onItemClick = { camera ->
             val intent = Intent(this, VideoPlayerActivity::class.java)
             intent.putExtra("rtspUrl", camera.rtspUrl)
             camera.ptzUrl?.let { intent.putExtra("ptzUrl", it) }
             startActivity(intent)
-        }
+        }, onItemLongClick = { index ->
+            showRemoveDialog(index)
+        })
 
         binding.recyclerView.adapter = adapter
-        binding.recyclerView.layoutManager =
-            androidx.recyclerview.widget.LinearLayoutManager(this)
+        binding.recyclerView.layoutManager = GridLayoutManager(this, 2)
 
         binding.fabAddCamera.setOnClickListener {
             showAddCameraDialog()
@@ -73,6 +74,19 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this, "Adres RTSP nie może być pusty", Toast.LENGTH_SHORT).show()
                 }
+            }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+
+    private fun showRemoveDialog(index: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Usuń kamerę")
+            .setMessage("Czy na pewno chcesz usunąć kamerę?")
+            .setPositiveButton("Usuń") { _, _ ->
+                cameras.removeAt(index)
+                CameraStorage.saveCameras(this, cameras)
+                adapter.notifyItemRemoved(index)
             }
             .setNegativeButton("Anuluj", null)
             .show()

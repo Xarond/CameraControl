@@ -1,22 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     android:elevation="4dp">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="200dp">
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/playerViewPreview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:useTextureView="true"
+            android:background="@android:color/black"
+            app:use_controller="false" />
 
         <TextView
             android:id="@+id/tvCameraName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:background="#80000000"
+            android:padding="4dp"
             android:text="Camera Name"
-            android:textSize="16sp" />
-    </LinearLayout>
+            android:textColor="@android:color/white" />
+    </FrameLayout>
 
 </androidx.cardview.widget.CardView>
