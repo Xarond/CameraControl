@@ -66,14 +66,20 @@ class MainActivity : AppCompatActivity() {
                 val url = urlInput.text.toString()
                 val ptz = ptzInput.text.toString()
 
-                if (url.isNotBlank()) {
-                    val camera = CameraModel(name, url, ptz.ifBlank { null })
-                    cameras.add(camera)
-                    CameraStorage.saveCameras(this, cameras)
-                    adapter.notifyItemInserted(cameras.size - 1)
-                } else {
+                if (url.isBlank()) {
                     Toast.makeText(this, "Adres RTSP nie może być pusty", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
                 }
+
+                if (!url.startsWith("rtsp://", true)) {
+                    Toast.makeText(this, "Niepoprawny format adresu RTSP", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val camera = CameraModel(name, url, ptz.ifBlank { null })
+                cameras.add(camera)
+                CameraStorage.saveCameras(this, cameras)
+                adapter.notifyItemInserted(cameras.size - 1)
             }
             .setNegativeButton("Anuluj", null)
             .show()
