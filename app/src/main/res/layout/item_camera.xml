@@ -14,7 +14,7 @@
             android:id="@+id/playerViewPreview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:useTextureView="true"
+            app:surface_type="texture_view"
             android:background="@android:color/black"
             app:use_controller="false" />
 
