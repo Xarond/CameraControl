@@ -1,0 +1,72 @@
+package com.Xarond.cameracontrol
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.Xarond.cameracontrol.databinding.ActivityMainBinding
+import com.Xarond.cameracontrol.model.CameraModel
+import com.Xarond.cameracontrol.VideoPlayerActivity
+import com.Xarond.cameracontrol.adapter.CameraAdapter
+import com.Xarond.cameracontrol.storage.CameraStorage
+import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityMainBinding
+    private val cameras = mutableListOf<CameraModel>()
+    private lateinit var adapter: CameraAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        cameras.addAll(CameraStorage.loadCameras(this))
+
+        adapter = CameraAdapter(cameras) { camera ->
+            val intent = Intent(this, VideoPlayerActivity::class.java)
+            intent.putExtra("rtspUrl", camera.rtspUrl)
+            startActivity(intent)
+        }
+
+        binding.recyclerView.adapter = adapter
+
+        binding.fabAddCamera.setOnClickListener {
+            showAddCameraDialog()
+        }
+    }
+
+    private fun showAddCameraDialog() {
+        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_2, null)
+        val nameInput = EditText(this)
+        nameInput.hint = "Nazwa kamery"
+        val urlInput = EditText(this)
+        urlInput.hint = "RTSP URL"
+
+        val layout = LinearLayout(this)
+        layout.orientation = LinearLayout.VERTICAL
+        layout.addView(nameInput)
+        layout.addView(urlInput)
+
+        AlertDialog.Builder(this)
+            .setTitle("Dodaj kamerę")
+            .setView(layout)
+            .setPositiveButton("Dodaj") { _, _ ->
+                val name = nameInput.text.toString()
+                val url = urlInput.text.toString()
+
+                if (url.isNotBlank()) {
+                    val camera = CameraModel(name, url)
+                    cameras.add(camera)
+                    CameraStorage.saveCameras(this, cameras)
+                    adapter.notifyItemInserted(cameras.size - 1)
+                } else {
+                    Toast.makeText(this, "Adres RTSP nie może być pusty", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Anuluj", null)
+            .show()
+    }
+}
