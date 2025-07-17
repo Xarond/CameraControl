@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
         adapter = CameraAdapter(cameras) { camera ->
             val intent = Intent(this, VideoPlayerActivity::class.java)
             intent.putExtra("rtspUrl", camera.rtspUrl)
+            camera.ptzUrl?.let { intent.putExtra("ptzUrl", it) }
             startActivity(intent)
         }
 
@@ -44,11 +45,14 @@ class MainActivity : AppCompatActivity() {
         nameInput.hint = "Nazwa kamery"
         val urlInput = EditText(this)
         urlInput.hint = "RTSP URL"
+        val ptzInput = EditText(this)
+        ptzInput.hint = "PTZ URL (opcjonalnie)"
 
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.addView(nameInput)
         layout.addView(urlInput)
+        layout.addView(ptzInput)
 
         AlertDialog.Builder(this)
             .setTitle("Dodaj kamerę")
@@ -56,9 +60,10 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Dodaj") { _, _ ->
                 val name = nameInput.text.toString()
                 val url = urlInput.text.toString()
+                val ptz = ptzInput.text.toString()
 
                 if (url.isNotBlank()) {
-                    val camera = CameraModel(name, url)
+                    val camera = CameraModel(name, url, ptz.ifBlank { null })
                     cameras.add(camera)
                     CameraStorage.saveCameras(this, cameras)
                     adapter.notifyItemInserted(cameras.size - 1)
