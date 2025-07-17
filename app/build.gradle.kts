@@ -37,7 +37,11 @@ android {
     buildFeatures {
         compose = true
         viewBinding = true
-        dataBinding = true
+        // Data binding isn't used, and enabling it can generate
+        // bindings for non-layout XML like colors or themes, leading
+        // to erroneous classes such as `ColorsBinding`. Disable it to
+        // avoid build errors.
+        dataBinding = false
     }
 }
 
