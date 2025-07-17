@@ -60,7 +60,6 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.7.1")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.okhttp3)
-    implementation(libs.onvif.java)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
