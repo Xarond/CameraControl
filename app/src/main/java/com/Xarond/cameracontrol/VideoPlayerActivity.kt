@@ -4,14 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.Xarond.cameracontrol.databinding.ActivityVideoPlayerBinding
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.SimpleExoPlayer
-import com.google.android.exoplayer2.ui.PlayerView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.Xarond.cameracontrol.controller.PTZController
 
 class VideoPlayerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityVideoPlayerBinding
-    private lateinit var player: SimpleExoPlayer
+    private lateinit var player: ExoPlayer
     private var ptzController: PTZController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,16 +20,21 @@ class VideoPlayerActivity : AppCompatActivity() {
         binding = ActivityVideoPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
         val rtspUrl = intent.getStringExtra("rtspUrl") ?: return
         val ptzUrl = intent.getStringExtra("ptzUrl")
 
-        player = SimpleExoPlayer.Builder(this).build()
+        player = ExoPlayer.Builder(this).build()
         binding.playerView.player = player
 
-        val mediaItem = MediaItem.fromUri(Uri.parse(rtspUrl))
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(rtspUrl))
+            .setMimeType(MimeTypes.APPLICATION_RTSP)
+            .build()
         player.setMediaItem(mediaItem)
         player.prepare()
-        player.play()
+        player.playWhenReady = true
 
         if (ptzUrl != null) {
             ptzController = PTZController(ptzUrl)
@@ -44,5 +50,10 @@ class VideoPlayerActivity : AppCompatActivity() {
     override fun onDestroy() {
         player.release()
         super.onDestroy()
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        onBackPressedDispatcher.onBackPressed()
+        return true
     }
 }
