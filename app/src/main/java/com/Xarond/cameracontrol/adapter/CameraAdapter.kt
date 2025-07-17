@@ -8,6 +8,7 @@ import com.Xarond.cameracontrol.model.CameraModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.rtsp.RtspMediaSource
 
 class CameraAdapter(
     private val cameras: MutableList<CameraModel>,
@@ -30,12 +31,17 @@ class CameraAdapter(
         holder.binding.tvCameraName.text = camera.name
 
         if (holder.player == null) {
-            holder.player = ExoPlayer.Builder(holder.binding.playerViewPreview.context).build().apply {
-                val item = MediaItem.Builder()
+            val context = holder.binding.playerViewPreview.context
+            holder.player = ExoPlayer.Builder(context).build().apply {
+                volume = 0f
+                val mediaItem = MediaItem.Builder()
                     .setUri(camera.rtspUrl)
                     .setMimeType(MimeTypes.APPLICATION_RTSP)
                     .build()
-                setMediaItem(item)
+                val mediaSource = RtspMediaSource.Factory()
+                    .setForceUseRtpTcp(true)
+                    .createMediaSource(mediaItem)
+                setMediaSource(mediaSource)
                 prepare()
                 playWhenReady = true
             }

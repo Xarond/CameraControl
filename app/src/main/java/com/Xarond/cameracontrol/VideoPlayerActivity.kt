@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.PlayerView
 import android.widget.Toast
+import android.util.Log
 import com.Xarond.cameracontrol.controller.PTZController
 
 class VideoPlayerActivity : AppCompatActivity() {
@@ -36,11 +37,22 @@ class VideoPlayerActivity : AppCompatActivity() {
             .setUri(Uri.parse(rtspUrl))
             .setMimeType(MimeTypes.APPLICATION_RTSP)
             .build()
-        val mediaSource = RtspMediaSource.Factory().createMediaSource(mediaItem)
+        val mediaSource = RtspMediaSource.Factory()
+            .setForceUseRtpTcp(true)
+            .createMediaSource(mediaItem)
         player.setMediaSource(mediaSource)
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                Toast.makeText(this@VideoPlayerActivity, "Błąd odtwarzania: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
+                Log.e("VideoPlayer", "Playback error", error)
+                Toast.makeText(
+                    this@VideoPlayerActivity,
+                    "Błąd odtwarzania: ${error.errorCodeName}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                Log.d("VideoPlayer", "Playback state changed: $state")
             }
         })
         player.prepare()
