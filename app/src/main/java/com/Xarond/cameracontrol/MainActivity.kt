@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.Xarond.cameracontrol.databinding.ActivityMainBinding
 import com.Xarond.cameracontrol.model.CameraModel
-import com.Xarond.cameracontrol.VideoPlayerActivity
 import com.Xarond.cameracontrol.adapter.CameraAdapter
 import com.Xarond.cameracontrol.storage.CameraStorage
 import android.widget.LinearLayout
@@ -29,7 +28,9 @@ class MainActivity : AppCompatActivity() {
         adapter = CameraAdapter(cameras, onItemClick = { camera ->
             val intent = Intent(this, VideoPlayerActivity::class.java)
             intent.putExtra("rtspUrl", camera.rtspUrl)
-            camera.ptzUrl?.let { intent.putExtra("ptzUrl", it) }
+            intent.putExtra("onvifPort", camera.onvifPort ?: 0)
+            intent.putExtra("username", camera.username)
+            intent.putExtra("password", camera.password)
             startActivity(intent)
         }, onItemLongClick = { index ->
             showRemoveDialog(index)
@@ -44,19 +45,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddCameraDialog() {
-        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_2, null)
         val nameInput = EditText(this)
         nameInput.hint = "Nazwa kamery"
         val urlInput = EditText(this)
         urlInput.hint = "RTSP URL"
-        val ptzInput = EditText(this)
-        ptzInput.hint = "PTZ URL (opcjonalnie)"
+        val portInput = EditText(this)
+        portInput.hint = "ONVIF Port (np. 8899)"
+        val userInput = EditText(this)
+        userInput.hint = "Użytkownik (opcjonalnie)"
+        val passInput = EditText(this)
+        passInput.hint = "Hasło (opcjonalnie)"
 
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.addView(nameInput)
         layout.addView(urlInput)
-        layout.addView(ptzInput)
+        layout.addView(portInput)
+        layout.addView(userInput)
+        layout.addView(passInput)
 
         AlertDialog.Builder(this)
             .setTitle("Dodaj kamerę")
@@ -64,7 +70,9 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Dodaj") { _, _ ->
                 val name = nameInput.text.toString()
                 val url = urlInput.text.toString()
-                val ptz = ptzInput.text.toString()
+                val port = portInput.text.toString().toIntOrNull()
+                val user = userInput.text.toString().ifBlank { null }
+                val pass = passInput.text.toString().ifBlank { null }
 
                 if (url.isBlank()) {
                     Toast.makeText(this, "Adres RTSP nie może być pusty", Toast.LENGTH_SHORT).show()
@@ -76,7 +84,7 @@ class MainActivity : AppCompatActivity() {
                     return@setPositiveButton
                 }
 
-                val camera = CameraModel(name, url, ptz.ifBlank { null })
+                val camera = CameraModel(name, url, port, user, pass)
                 cameras.add(camera)
                 CameraStorage.saveCameras(this, cameras)
                 adapter.notifyItemInserted(cameras.size - 1)

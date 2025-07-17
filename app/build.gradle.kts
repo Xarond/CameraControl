@@ -1,7 +1,8 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    id("com.android.application")
+    kotlin("android")
+    kotlin("plugin.parcelize")
+    kotlin("plugin.compose")// <- tylko ten do Parcelize
 }
 
 android {
@@ -60,6 +61,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.7.1")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.okhttp3)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -67,4 +70,5 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
 }
