@@ -12,6 +12,7 @@ import com.Xarond.cameracontrol.adapter.CameraAdapter
 import com.Xarond.cameracontrol.storage.CameraStorage
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
+import androidx.recyclerview.widget.LinearLayoutManager
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -32,6 +33,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.recyclerView.adapter = adapter
+        binding.recyclerView.layoutManager =
+            androidx.recyclerview.widget.LinearLayoutManager(this)
 
         binding.fabAddCamera.setOnClickListener {
             showAddCameraDialog()
