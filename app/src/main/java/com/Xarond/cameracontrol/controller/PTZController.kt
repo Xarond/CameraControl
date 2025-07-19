@@ -12,6 +12,10 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.text.SimpleDateFormat
+import java.util.*
 
 class PTZController(
     private val ip: String,
@@ -21,12 +25,13 @@ class PTZController(
     private val password: String = ""
 ) {
     private val client = OkHttpClient()
-    private val soapType = "application/soap+xml; charset=utf-8".toMediaType()
+    private val soap12Type = "application/soap+xml; charset=utf-8".toMediaType()
+    private val soap11Type = "text/xml; charset=utf-8".toMediaType()
     private val baseUrl = "http://$ip:$port"
 
     private var mediaXAddr: String? = null
     private var ptzXAddr:   String? = null
-    private var profileToken:String? = null
+    private var profileToken: String? = null
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
@@ -40,7 +45,7 @@ class PTZController(
         }
     }
 
-    // Step 1: GetCapabilities → discover and rewrite XAddrs
+    /** STEP 1: GetCapabilities → discover and normalize XAddrs **/
     private suspend fun resolveXAddr(): Boolean {
         val envelope = """
             <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
@@ -53,7 +58,7 @@ class PTZController(
             </s:Envelope>
         """.trimIndent()
 
-        val resp = postSoap("$baseUrl/onvif/device_service", envelope)
+        val resp = postSoap(baseUrl + "/onvif/device_service", envelope)
         if (resp.isNullOrBlank()) {
             toastMain("GetCapabilities failed or empty response")
             return false
@@ -66,16 +71,15 @@ class PTZController(
             return false
         }
 
-        // Rewrite host:port to the external one we connected with
-        mediaXAddr = rewriteHostPort(internalMediaX, ip, port)
-        ptzXAddr   = rewriteHostPort(internalPtzX,   ip, port)
+        mediaXAddr = normalizeEndpoint(rewriteHostPort(internalMediaX, ip, port), "media_service")
+        ptzXAddr   = normalizeEndpoint(rewriteHostPort(internalPtzX,   ip, port), "ptz_service")
 
-        Log.d("PTZController", "Rewritten MediaXAddr=$mediaXAddr, PTZXAddr=$ptzXAddr")
+        Log.d("PTZController", "Using endpoints: Media=$mediaXAddr, PTZ=$ptzXAddr")
         toastMain("Using:\n$mediaXAddr\n$ptzXAddr")
         return true
     }
 
-    // Step 2: GetProfiles → fetch ProfileToken with detailed logging
+    /** STEP 2: GetProfiles → fetch ProfileToken via SOAP 1.1 + WS-Security **/
     private suspend fun fetchProfileToken() {
         val envelope = """
             <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
@@ -85,7 +89,11 @@ class PTZController(
         """.trimIndent()
 
         Log.d("PTZController", "GetProfiles SOAP Request: $envelope")
-        val resp = postSoap(mediaXAddr!!, envelope)
+        val resp = postSoap11(
+            mediaXAddr!!,
+            envelope,
+            "http://www.onvif.org/ver10/media/wsdl/GetProfiles"
+        )
         if (resp.isNullOrBlank()) {
             toastMain("GetProfiles failed or empty response")
             return
@@ -93,12 +101,18 @@ class PTZController(
         Log.d("PTZController", "GetProfiles Response: $resp")
 
         try {
-            val parser = XmlPullParserFactory.newInstance().newPullParser().apply { setInput(resp.reader()) }
+            val parser = XmlPullParserFactory.newInstance().newPullParser().apply {
+                setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
+                setInput(resp.reader())
+            }
             while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-                if (parser.eventType == XmlPullParser.START_TAG && parser.name == "Profiles") {
-                    profileToken = parser.getAttributeValue(null, "token")
-                    Log.d("PTZController", "Parsed ProfileToken: $profileToken")
-                    break
+                if (parser.eventType == XmlPullParser.START_TAG) {
+                    val localName = parser.name.substringAfter(':')
+                    if (localName == "Profiles") {
+                        profileToken = parser.getAttributeValue(null, "token")
+                        Log.d("PTZController", "Parsed ProfileToken: $profileToken")
+                        break
+                    }
                 }
                 parser.next()
             }
@@ -114,7 +128,7 @@ class PTZController(
         }
     }
 
-    // Step 3: ContinuousMove → then Stop
+    /** STEP 3: ContinuousMove → then Stop **/
     fun moveLeft()  = sendMove(-1f, 0f, 0f)
     fun moveRight() = sendMove(1f, 0f, 0f)
     fun moveUp()    = sendMove(0f, 1f, 0f)
@@ -136,8 +150,7 @@ class PTZController(
                     <tptz:ContinuousMove>
                       <tptz:ProfileToken>$profileToken</tptz:ProfileToken>
                       <tptz:Velocity>
-                        <tt:PanTilt x="$x" y="$y"
-                          space="http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace"/>
+                        <tt:PanTilt x="$x" y="$y" space="http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace"/>
                         <tt:Zoom x="$zoom"/>
                       </tptz:Velocity>
                     </tptz:ContinuousMove>
@@ -152,7 +165,7 @@ class PTZController(
         }
     }
 
-    // Step 4: Stop
+    /** STEP 4: Stop **/
     private fun sendStop() {
         if (profileToken.isNullOrBlank()) return
         CoroutineScope(Dispatchers.IO).launch {
@@ -174,55 +187,108 @@ class PTZController(
         }
     }
 
-    // Shared SOAP helper with fallback for ProtocolException
-    private suspend fun postSoap(url: String, body: String): String? = withContext(Dispatchers.IO) {
-        val authHeader = if (username.isNotBlank() && password.isNotBlank()) {
-            "Basic " + Base64.encodeToString("$username:$password".toByteArray(), Base64.NO_WRAP)
-        } else null
+    /** Build WS‑Security UsernameToken header **/
+    private fun buildSecurityHeader(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val created = sdf.format(Date())
+        val nonce = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val nonceB64 = Base64.encodeToString(nonce, Base64.NO_WRAP)
+        val digest = MessageDigest.getInstance("SHA-1")
+            .digest(nonce + created.toByteArray(Charsets.UTF_8) + password.toByteArray(Charsets.UTF_8))
+        val digestB64 = Base64.encodeToString(digest, Base64.NO_WRAP)
 
-        val req = Request.Builder()
+        return """
+            <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+                           xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+              <wsse:UsernameToken wsu:Id="UsernameToken-1">
+                <wsse:Username>$username</wsse:Username>
+                <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">
+                  $digestB64
+                </wsse:Password>
+                <wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">
+                  $nonceB64
+                </wsse:Nonce>
+                <wsu:Created>$created</wsu:Created>
+              </wsse:UsernameToken>
+            </wsse:Security>
+        """.trimIndent()
+    }
+
+    /** SOAP 1.2 POST with WS‑Security header injection **/
+    private suspend fun postSoap(url: String, body: String): String? = withContext(Dispatchers.IO) {
+        val full = body.replaceFirst("<s:Body>", "<s:Header>${buildSecurityHeader()}</s:Header><s:Body>")
+        val builder = Request.Builder()
             .url(url)
             .apply {
-                authHeader?.let { addHeader("Authorization", it) }
-                addHeader("Connection", "close")
+                if (username.isNotBlank()) addHeader("Authorization",
+                    "Basic " + Base64.encodeToString("$username:$password".toByteArray(), Base64.NO_WRAP)
+                )
+                addHeader("Connection","close")
+                addHeader("Content-Type", soap12Type.toString())
             }
-            .post(RequestBody.create(soapType, body))
-            .build()
+            .post(RequestBody.create(soap12Type, full))
 
-        return@withContext try {
-            client.newCall(req).execute().use { resp ->
+        try {
+            client.newCall(builder.build()).execute().use { resp ->
                 Log.d("PTZController", "$url → HTTP ${resp.code}")
-                try {
-                    resp.body?.string()
-                } catch (pe: java.net.ProtocolException) {
-                    Log.w("PTZController", "ProtocolException reading body, fallback", pe)
-                    resp.body?.source()?.let { source ->
-                        source.request(Long.MAX_VALUE)
-                        source.buffer.clone().readUtf8()
-                    }
-                }
+                // czytamy cały strumień na raz jako bajty:
+                val bytes = resp.body!!.bytes()
+                val text  = bytes.toString(Charsets.UTF_8)
+                Log.d("PTZController", "-- RAW RESPONSE --\n$text")
+                return@withContext text
             }
         } catch (e: Exception) {
             Log.e("PTZController", "postSoap error", e)
             toastMain("HTTP error: ${e.localizedMessage}")
-            null
+            return@withContext null
         }
     }
 
-    // Extract XAddr from GetCapabilities
+    /** SOAP 1.1 POST with SOAPAction + WS‑Security injection **/
+    private suspend fun postSoap11(url: String, body: String, action: String): String? = withContext(Dispatchers.IO) {
+        val full = body.replaceFirst("<s:Body>", "<s:Header>${buildSecurityHeader()}</s:Header><s:Body>")
+        val builder = Request.Builder()
+            .url(url)
+            .apply {
+                if (username.isNotBlank()) addHeader("Authorization",
+                    "Basic " + Base64.encodeToString("$username:$password".toByteArray(), Base64.NO_WRAP)
+                )
+                addHeader("Connection","close")
+                addHeader("Content-Type", soap11Type.toString())
+                addHeader("SOAPAction", "\"$action\"")
+            }
+            .post(RequestBody.create(soap11Type, full))
+
+        try {
+            client.newCall(builder.build()).execute().use { resp ->
+                Log.d("PTZController", "$url → HTTP ${resp.code} (SOAP 1.1)")
+                val bytes = resp.body!!.bytes()
+                val text  = bytes.toString(Charsets.UTF_8)
+                Log.d("PTZController", "-- RAW RESPONSE --\n$text")
+                return@withContext text
+            }
+        } catch (e: Exception) {
+            Log.e("PTZController", "postSoap11 error", e)
+            toastMain("HTTP11 error: ${e.localizedMessage}")
+            return@withContext null
+        }
+    }
+
+    /** Extract XAddr from GetCapabilities **/
     private fun extractXAddr(xml: String, tag: String): String? {
-        val parser = XmlPullParserFactory.newInstance().newPullParser().apply { setInput(xml.reader()) }
+        val parser = XmlPullParserFactory.newInstance().newPullParser().apply {
+            setInput(xml.reader())
+        }
         var inside = false
         while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            val raw = parser.name
-            if (raw != null) {
+            parser.name?.let { raw ->
                 val name = raw.substringAfter(':')
                 when (parser.eventType) {
-                    XmlPullParser.START_TAG -> {
-                        if (name == tag) inside = true
-                        if (name == "XAddr" && inside) return parser.nextText()
-                    }
-                    XmlPullParser.END_TAG -> if (name == tag) inside = false
+                    XmlPullParser.START_TAG -> if (name == tag) inside = true
+                    else if (inside && name == "XAddr") return parser.nextText()
+                    XmlPullParser.END_TAG   -> if (name == tag) inside = false
                 }
             }
             parser.next()
@@ -230,7 +296,7 @@ class PTZController(
         return null
     }
 
-    // Rewrite discovered URL to external host:port
+    /** Rewrite discovered URL to external host:port **/
     private fun rewriteHostPort(url: String, newHost: String, newPort: Int): String {
         val u = Uri.parse(url)
         return u.buildUpon()
@@ -239,7 +305,16 @@ class PTZController(
             .toString()
     }
 
-    // Toast helper on main thread
+    /** Normalize ONVIF endpoint path **/
+    private fun normalizeEndpoint(xaddr: String, svc: String): String {
+        val u = Uri.parse(xaddr)
+        return u.buildUpon()
+            .encodedPath("/onvif/$svc")
+            .build()
+            .toString()
+    }
+
+    /** Toast helper on main thread **/
     private suspend fun toastMain(text: String) {
         withContext(Dispatchers.Main) {
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
