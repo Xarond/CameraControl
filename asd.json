@@ -20,7 +20,15 @@
           "size": 86754149,
           "downloadURL": "https://github.com/whoeevee/EeveeSpotify/releases/download/swift6.0.2/EeveeSpotify-6.0.2-9.0.66.ipa",
           "localizedDescription": "Spotify v9.0.66 injected with EeveeSpotify"
-        }
+        },
+        {
+          "version": "9.0.64",
+          "buildVersion": "1",
+          "date": "2025-07-28T10:40:07Z",
+          "size": 86087861,
+          "downloadURL": "https://github.com/whoeevee/EeveeSpotify/releases/download/swift6.0.2/EeveeSpotify-6.0.2-9.0.64.ipa",
+          "localizedDescription": "Spotify v9.0.64 injected with EeveeSpotify"
+        },
       ],
       "appPermissions": {
         "entitlements": [
